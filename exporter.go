@@ -643,13 +643,21 @@ type StatsDUDPListener struct {
 }
 
 func (l *StatsDUDPListener) Listen(e chan<- Events) {
+	threads := 4
+	for i := 0; i < threads; i++ {
+		go l.Listener(e)
+	}
+}
+
+func (l *StatsDUDPListener) Listener(e chan<- Events) {
 	buf := make([]byte, 65535)
 	for {
 		n, _, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
 			log.Fatal(err)
 		}
-		l.handlePacket(buf[0:n], e)
+		data := buf[0:n]
+		go l.handlePacket(data, e)
 	}
 }
 
