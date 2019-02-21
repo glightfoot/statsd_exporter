@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	_ "net/http/pprof"
 
 	"github.com/howeyc/fsnotify"
 	"github.com/prometheus/client_golang/prometheus"
