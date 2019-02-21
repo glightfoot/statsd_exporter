@@ -654,14 +654,26 @@ func (l *StatsDUDPListener) Listen(threads string, e chan<- Events) {
 }
 
 func (l *StatsDUDPListener) Listener(e chan<- Events) {
+	var sem = make(chan struct{}, 25)
 	buf := make([]byte, 65535)
 	for {
 		n, _, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		data := append([]byte(nil), buf[0:n]...)
-		go l.handlePacket(data[0:n], e)
+		select {
+			case sem <- struct{}{}: {
+				go func() {
+					l.handlePacket(data[0:n], e)
+					<-sem
+				}()
+			}
+
+			default:
+				l.handlePacket(data[0:n], e)
+		}
 	}
 }
 
