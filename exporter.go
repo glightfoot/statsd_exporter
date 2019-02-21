@@ -642,19 +642,16 @@ type StatsDUDPListener struct {
 	conn *net.UDPConn
 }
 
-func (l *StatsDUDPListener) Listen(threads string, e chan<- Events) {
-	t, err := strconv.Atoi(threads)
-	if err != nil {
-		log.Error(fmt.Sprintf("Unable to convert thread option %v to int", threads))
-		t = 1
-	}
-	for i := 0; i < t; i++ {
-		go l.Listener(e)
+func (l *StatsDUDPListener) Listen(threadCount int, packetHandlers int, e chan<- Events) {
+	concurrentHandlersPerThread := packetHandlers / threadCount
+
+	for i := 0; i < threadCount; i++ {
+		go l.Listener(e, concurrentHandlersPerThread)
 	}
 }
 
-func (l *StatsDUDPListener) Listener(e chan<- Events) {
-	var sem = make(chan struct{}, 25)
+func (l *StatsDUDPListener) Listener(e chan<- Events, concurrentPacketHandlers int) {
+	var sem = make(chan struct{}, concurrentPacketHandlers)
 	buf := make([]byte, 65535)
 	for {
 		n, _, err := l.conn.ReadFromUDP(buf)
