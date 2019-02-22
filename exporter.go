@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"hash"
 	"hash/fnv"
 	"io"
 	"net"
@@ -46,10 +47,6 @@ const (
 
 var (
 	illegalCharsRE = regexp.MustCompile(`[^a-zA-Z0-9_]`)
-
-	hash   = fnv.New64a()
-	strBuf bytes.Buffer // Used for hashing.
-	intBuf = make([]byte, 8)
 )
 
 func labelNames(labels prometheus.Labels) []string {
@@ -61,19 +58,34 @@ func labelNames(labels prometheus.Labels) []string {
 	return names
 }
 
+type MetricHasher struct {
+	hashObj hash.Hash64
+	strBuf  bytes.Buffer
+	intBuf  []byte
+}
+
+var hashPool = &sync.Pool{
+	New: func() interface{} {
+		hasher := new(MetricHasher)
+		hasher.hashObj = fnv.New64a()
+		hasher.intBuf = make([]byte, 8)
+		return hasher
+	},
+}
+
 // hashNameAndLabels returns a hash value of the provided name string and all
 // the label names and values in the provided labels map.
-//
-// Not safe for concurrent use! (Uses a shared buffer and hasher to save on
-// allocations.)
 func hashNameAndLabels(name string, labels prometheus.Labels) uint64 {
-	hash.Reset()
-	strBuf.Reset()
-	strBuf.WriteString(name)
-	hash.Write(strBuf.Bytes())
-	binary.BigEndian.PutUint64(intBuf, model.LabelsToSignature(labels))
-	hash.Write(intBuf)
-	return hash.Sum64()
+	hasher := hashPool.Get().(*MetricHasher)
+	hasher.hashObj.Reset()
+	hasher.strBuf.Reset()
+	hasher.strBuf.WriteString(name)
+	hasher.hashObj.Write(hasher.strBuf.Bytes())
+	binary.BigEndian.PutUint64(hasher.intBuf, model.LabelsToSignature(labels))
+	hasher.hashObj.Write(hasher.intBuf)
+	sum := hasher.hashObj.Sum64()
+	hashPool.Put(hasher)
+	return sum
 }
 
 var globalMutex sync.RWMutex
@@ -340,7 +352,7 @@ func (b *Exporter) Listen(threadCount int, packetHandlers int, e <-chan Events) 
 }
 
 func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events, packetHandlers int) {
-	//var sem = make(chan struct{}, packetHandlers)
+	var sem = make(chan struct{}, packetHandlers)
 	for {
 		select {
 		case events, ok := <-e:
@@ -351,13 +363,13 @@ func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Even
 			}
 			for _, event := range events {
 				select {
-				// case sem <- struct{}{}:
-				// 	{
-				// 		go func(e Event) {
-				// 			b.handleEvent(e)
-				// 			<-sem
-				// 		}(event)
-				// 	}
+				case sem <- struct{}{}:
+					{
+						go func(e Event) {
+							b.handleEvent(e)
+							<-sem
+						}(event)
+					}
 
 				default:
 					b.handleEvent(event)
@@ -558,9 +570,11 @@ func (b *Exporter) saveLabelValues(metricName string, labels prometheus.Labels, 
 		globalMutex.Unlock()
 	}
 	now := clock.Now()
+	globalMutex.Lock()
 	metricLabelValues.lastRegisteredAt = now
 	// Update ttl from mapping
 	metricLabelValues.ttl = ttl
+	globalMutex.Unlock()
 }
 
 func NewExporter(mapper *mapper.MetricMapper) *Exporter {
