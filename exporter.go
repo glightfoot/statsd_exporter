@@ -234,7 +234,7 @@ func (c *HistogramContainer) Get(metricName string, labels prometheus.Labels, he
 		if mapping != nil && mapping.Buckets != nil && len(mapping.Buckets) > 0 {
 			buckets = mapping.Buckets
 		}
-		histogramVec := prometheus.NewHistogramVec(
+		histogramVec = prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    metricName,
 				Help:    help,
