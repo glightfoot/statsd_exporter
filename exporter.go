@@ -340,7 +340,7 @@ func (b *Exporter) Listen(threadCount int, packetHandlers int, e <-chan Events) 
 }
 
 func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events, packetHandlers int) {
-	var sem = make(chan struct{}, packetHandlers)
+	//var sem = make(chan struct{}, packetHandlers)
 	for {
 		select {
 		case events, ok := <-e:
@@ -351,13 +351,13 @@ func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Even
 			}
 			for _, event := range events {
 				select {
-				case sem <- struct{}{}:
-					{
-						go func(e Event) {
-							b.handleEvent(e)
-							<-sem
-						}(event)
-					}
+				// case sem <- struct{}{}:
+				// 	{
+				// 		go func(e Event) {
+				// 			b.handleEvent(e)
+				// 			<-sem
+				// 		}(event)
+				// 	}
 
 				default:
 					b.handleEvent(event)
