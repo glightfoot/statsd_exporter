@@ -49,7 +49,7 @@ type MetricMapper struct {
 	FSM      *fsm.FSM
 	doFSM    bool
 	doRegex  bool
-	mutex    sync.RWMutex
+	Mutex    sync.RWMutex
 
 	MappingsCount prometheus.Gauge
 }
@@ -184,8 +184,8 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
 
 	}
 
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	m.Mutex.Lock()
+	defer m.Mutex.Unlock()
 
 	m.Defaults = n.Defaults
 	m.Mappings = n.Mappings
@@ -219,8 +219,8 @@ func (m *MetricMapper) InitFromFile(fileName string) error {
 }
 
 func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricType) (*MetricMapping, prometheus.Labels, bool) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
+	m.Mutex.RLock()
+	defer m.Mutex.RUnlock()
 
 	// glob matching
 	if m.doFSM {

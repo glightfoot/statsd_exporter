@@ -384,9 +384,11 @@ func (b *Exporter) handleEvent(event Event) {
 	mapping, labels, present := b.mapper.GetMapping(event.MetricName(), event.MetricType())
 	if mapping == nil {
 		mapping = &mapper.MetricMapping{}
+		b.mapper.Mutex.RLock()
 		if b.mapper.Defaults.Ttl != 0 {
 			mapping.Ttl = b.mapper.Defaults.Ttl
 		}
+		b.mapper.Mutex.RUnlock()
 	}
 
 	if mapping.Action == mapper.ActionTypeDrop {
@@ -460,7 +462,9 @@ func (b *Exporter) handleEvent(event Event) {
 			t = mapping.TimerType
 		}
 		if t == mapper.TimerTypeDefault {
+			b.mapper.Mutex.RLock()
 			t = b.mapper.Defaults.TimerType
+			b.mapper.Mutex.RUnlock()
 		}
 
 		switch t {
