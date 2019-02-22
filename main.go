@@ -17,9 +17,9 @@ import (
 	"bufio"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
-	_ "net/http/pprof"
 
 	"github.com/howeyc/fsnotify"
 	"github.com/prometheus/client_golang/prometheus"
