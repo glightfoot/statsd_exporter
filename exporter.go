@@ -537,7 +537,9 @@ func (b *Exporter) removeStaleMetrics() {
 				b.Gauges.Delete(metricName, lvs.labels)
 				b.Summaries.Delete(metricName, lvs.labels)
 				b.Histograms.Delete(metricName, lvs.labels)
+				globalMutex.Lock()
 				delete(b.labelValues[metricName], hash)
+				globalMutex.Unlock()
 			}
 		}
 	}
