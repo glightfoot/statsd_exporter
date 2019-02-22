@@ -219,6 +219,9 @@ func (m *MetricMapper) InitFromFile(fileName string) error {
 }
 
 func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricType) (*MetricMapping, prometheus.Labels, bool) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
 	// glob matching
 	if m.doFSM {
 		finalState, captures := m.FSM.GetMapping(statsdMetric, string(statsdMetricType))
@@ -238,9 +241,6 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 	}
 
 	// regex matching
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
 	for _, mapping := range m.Mappings {
 		// if a rule don't have regex matching type, the regex field is unset
 		if mapping.regex == nil {
