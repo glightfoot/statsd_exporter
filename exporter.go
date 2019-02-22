@@ -76,7 +76,7 @@ func hashNameAndLabels(name string, labels prometheus.Labels) uint64 {
 	return hash.Sum64()
 }
 
-var globalMutex sync.Mutex
+var globalMutex sync.RWMutex
 
 type Counter struct {
 	CounterVec *prometheus.CounterVec
@@ -356,16 +356,14 @@ func escapeMetricName(metricName string) string {
 func (b *Exporter) Listen(threadCount int, packetHandlers int, e <-chan Events) {
 	removeStaleMetricsTicker := clock.NewTicker(time.Second * 10)
 	go b.removeStaleMetricsLoop(removeStaleMetricsTicker)
-	concurrentHandlersPerThread := packetHandlers / threadCount
 
-	for i := 1; i < threadCount; i++ {
-		go b.Listener(removeStaleMetricsTicker, e, concurrentHandlersPerThread)
+	for i := 1; i < packetHandlers; i++ {
+		go b.Listener(removeStaleMetricsTicker, e)
 	}
-	b.Listener(removeStaleMetricsTicker, e, concurrentHandlersPerThread)
+	b.Listener(removeStaleMetricsTicker, e)
 }
 
-func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events, concurrentPacketHandlers int) {
-	var sem = make(chan struct{}, concurrentPacketHandlers)
+func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events) {
 	for {
 		select {
 		case events, ok := <-e:
@@ -375,18 +373,7 @@ func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Even
 				return
 			}
 			for _, event := range events {
-				select {
-				case sem <- struct{}{}:
-					{
-						go func() {
-							b.handleEvent(event)
-							<-sem
-						}()
-					}
-
-				default:
-					b.handleEvent(event)
-				}
+				b.handleEvent(event)
 			}
 		}
 	}
@@ -560,9 +547,9 @@ func (b *Exporter) removeStaleMetrics() {
 
 // saveLabelValues stores label values set to labelValues and update lastRegisteredAt time and ttl value
 func (b *Exporter) saveLabelValues(metricName string, labels prometheus.Labels, ttl time.Duration) {
-	globalMutex.Lock()
+	globalMutex.RLock()
 	metric, hasMetric := b.labelValues[metricName]
-	globalMutex.Unlock()
+	globalMutex.RUnlock()
 	if !hasMetric {
 		metric = make(map[uint64]*LabelValues)
 		globalMutex.Lock()
@@ -570,16 +557,18 @@ func (b *Exporter) saveLabelValues(metricName string, labels prometheus.Labels, 
 		globalMutex.Unlock()
 	}
 	hash := hashNameAndLabels(metricName, labels)
-	globalMutex.Lock()
+	globalMutex.RLock()
 	metricLabelValues, ok := metric[hash]
+	globalMutex.RUnlock()
 	if !ok {
 		metricLabelValues = &LabelValues{
 			labels: labels,
 			ttl:    ttl,
 		}
+		globalMutex.Lock()
 		b.labelValues[metricName][hash] = metricLabelValues
+		globalMutex.Unlock()
 	}
-	globalMutex.Unlock()
 	now := clock.Now()
 	metricLabelValues.lastRegisteredAt = now
 	// Update ttl from mapping
