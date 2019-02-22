@@ -356,7 +356,7 @@ func escapeMetricName(metricName string) string {
 func (b *Exporter) Listen(e <-chan Events) {
 	removeStaleMetricsTicker := clock.NewTicker(time.Second)
 	go b.removeStaleMetricsLoop(removeStaleMetricsTicker)
-	threads := 3
+	threads := 100
 	for i := 0; i < threads; i++ {
 		go b.Listener(removeStaleMetricsTicker, e)
 	}
