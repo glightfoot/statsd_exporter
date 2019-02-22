@@ -145,8 +145,8 @@ func main() {
 		mappingConfig   = kingpin.Flag("statsd.mapping-config", "Metric mapping configuration file name.").String()
 		readBuffer      = kingpin.Flag("statsd.read-buffer", "Size (in bytes) of the operating system's transmit read buffer associated with the UDP connection. Please make sure the kernel parameters net.core.rmem_max is set to a value greater than the value specified.").Int()
 		dumpFSMPath     = kingpin.Flag("debug.dump-fsm", "The path to dump internal FSM generated for glob matching as Dot file.").Default("").String()
-		listenerThreads = kingpin.Flag("udp-listener.threads", "The number of listener threads to receive UDP traffic.").Default("4").Int()
-		packetHandlers  = kingpin.Flag("udp-listener.handlers", "The number of concurrent packet handlers").Default("10000").Int()
+		listenerThreads = kingpin.Flag("listeners.threads", "The number of listener threads to receive UDP traffic.").Default("4").Int()
+		packetHandlers  = kingpin.Flag("listeners.handlers", "The number of concurrent packet handlers").Default("10000").Int()
 	)
 
 	log.AddFlags(kingpin.CommandLine)
@@ -213,5 +213,5 @@ func main() {
 		go watchConfig(*mappingConfig, mapper)
 	}
 	exporter := NewExporter(mapper)
-	exporter.Listen(events)
+	exporter.Listen(*listenerThreads, *packetHandlers, events)
 }
