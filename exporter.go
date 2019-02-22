@@ -527,6 +527,7 @@ func (b *Exporter) removeStaleMetricsLoop(removeStaleMetricsTicker *time.Ticker)
 func (b *Exporter) removeStaleMetrics() {
 	now := clock.Now()
 	// delete timeseries with expired ttl
+	globalMutex.Lock()
 	for metricName := range b.labelValues {
 		for hash, lvs := range b.labelValues[metricName] {
 			if lvs.ttl == 0 {
@@ -537,12 +538,11 @@ func (b *Exporter) removeStaleMetrics() {
 				b.Gauges.Delete(metricName, lvs.labels)
 				b.Summaries.Delete(metricName, lvs.labels)
 				b.Histograms.Delete(metricName, lvs.labels)
-				globalMutex.Lock()
 				delete(b.labelValues[metricName], hash)
-				globalMutex.Unlock()
 			}
 		}
 	}
+	globalMutex.Unlock()
 }
 
 // saveLabelValues stores label values set to labelValues and update lastRegisteredAt time and ttl value
