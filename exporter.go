@@ -330,16 +330,17 @@ func escapeMetricName(metricName string) string {
 // Listen handles all events sent to the given channel sequentially. It
 // terminates when the channel is closed.
 func (b *Exporter) Listen(threadCount int, packetHandlers int, e <-chan Events) {
-	removeStaleMetricsTicker := clock.NewTicker(time.Second * 10)
+	removeStaleMetricsTicker := clock.NewTicker(time.Second * 1)
 	go b.removeStaleMetricsLoop(removeStaleMetricsTicker)
 
-	for i := 1; i < packetHandlers; i++ {
-		go b.Listener(removeStaleMetricsTicker, e)
+	for i := 1; i < 10; i++ {
+		go b.Listener(removeStaleMetricsTicker, e, packetHandlers)
 	}
-	b.Listener(removeStaleMetricsTicker, e)
+	b.Listener(removeStaleMetricsTicker, e, packetHandlers)
 }
 
-func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events) {
+func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events, packetHandlers int) {
+	var sem = make(chan struct{}, packetHandlers)
 	for {
 		select {
 		case events, ok := <-e:
@@ -349,7 +350,18 @@ func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Even
 				return
 			}
 			for _, event := range events {
-				b.handleEvent(event)
+				select {
+				case sem <- struct{}{}:
+					{
+						go func(e Event) {
+							b.handleEvent(e)
+							<-sem
+						}(event)
+					}
+
+				default:
+					b.handleEvent(event)
+				}
 			}
 		}
 	}
