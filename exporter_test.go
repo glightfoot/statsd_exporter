@@ -53,7 +53,7 @@ func TestNegativeCounter(t *testing.T) {
 	}()
 
 	ex := NewExporter(&mapper.MetricMapper{})
-	ex.Listen(events)
+	ex.Listen(1, 1, events)
 }
 
 // TestInvalidUtf8InDatadogTagValue validates robustness of exporter listener
@@ -78,7 +78,7 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 	}()
 
 	ex := NewExporter(&mapper.MetricMapper{})
-	ex.Listen(events)
+	ex.Listen(1, 1, events)
 }
 
 func TestHistogramUnits(t *testing.T) {
@@ -87,7 +87,7 @@ func TestHistogramUnits(t *testing.T) {
 	go func() {
 		ex := NewExporter(&mapper.MetricMapper{})
 		ex.mapper.Defaults.TimerType = mapper.TimerTypeHistogram
-		ex.Listen(events)
+		ex.Listen(1, 1, events)
 	}()
 
 	// Synchronously send a statsd event to wait for handleEvent execution.
@@ -204,7 +204,7 @@ mappings:
 	defer close(events)
 	go func() {
 		ex := NewExporter(testMapper)
-		ex.Listen(events)
+		ex.Listen(1, 0, events)
 	}()
 
 	ev := Events{

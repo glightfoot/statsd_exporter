@@ -358,7 +358,7 @@ func (b *Exporter) Listen(threadCount int, packetHandlers int, e <-chan Events) 
 	go b.removeStaleMetricsLoop(removeStaleMetricsTicker)
 	concurrentHandlersPerThread := packetHandlers / threadCount
 
-	for i := 0; i < threadCount; i++ {
+	for i := 1; i < threadCount; i++ {
 		go b.Listener(removeStaleMetricsTicker, e, concurrentHandlersPerThread)
 	}
 	b.Listener(removeStaleMetricsTicker, e, concurrentHandlersPerThread)
