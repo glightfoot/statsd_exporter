@@ -732,23 +732,36 @@ type StatsDUDPListener struct {
 	conn *net.UDPConn
 }
 
-func (l *StatsDUDPListener) Listen(e chan<- Events) {
-	threads := 100
-	for i := 0; i < threads; i++ {
-		go l.Listener(e)
+func (l *StatsDUDPListener) Listen(threadCount int, packetHandlers int, e chan<- Events) {
+	concurrentHandlersPerThread := packetHandlers / threadCount
+
+	for i := 0; i < threadCount; i++ {
+		go l.Listener(e, concurrentHandlersPerThread)
 	}
 }
 
-func (l *StatsDUDPListener) Listener(e chan<- Events) {
+func (l *StatsDUDPListener) Listener(e chan<- Events, concurrentPacketHandlers int) {
+	var sem = make(chan struct{}, concurrentPacketHandlers)
 	buf := make([]byte, 65535)
 	for {
 		n, _, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
 			log.Fatal(err)
 		}
-		//data := buf[0:n]
+
 		data := append([]byte(nil), buf[0:n]...)
-		go l.handlePacket(data, e)
+		select {
+		case sem <- struct{}{}:
+			{
+				go func() {
+					l.handlePacket(data[0:n], e)
+					<-sem
+				}()
+			}
+
+		default:
+			l.handlePacket(data[0:n], e)
+		}
 	}
 }
 
