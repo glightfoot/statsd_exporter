@@ -49,7 +49,7 @@ type MetricMapper struct {
 	FSM      *fsm.FSM
 	doFSM    bool
 	doRegex  bool
-	mutex    sync.Mutex
+	mutex    sync.RWMutex
 
 	MappingsCount prometheus.Gauge
 }
@@ -238,8 +238,8 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 	}
 
 	// regex matching
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
 
 	for _, mapping := range m.Mappings {
 		// if a rule don't have regex matching type, the regex field is unset

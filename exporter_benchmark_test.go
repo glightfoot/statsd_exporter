@@ -95,31 +95,31 @@ func benchmarkExporterListen(times int, b *testing.B) {
 
 		for i := 0; i < times; i++ {
 			for _, line := range bytesInput {
-				// wg.Add(2)
-				// go func() {
-				// 	defer wg.Done()
-				// 	for _, event := range lineToEvents(line) {
-				// 		exporter.handleEvent(event)
-				// 	}
-				// }()
-				// go func() {
-				// 	defer wg.Done()
-				// 	for _, event := range lineToEvents(line) {
-				// 		exporter.handleEvent(event)
-				// 	}
-				// }()
+				wg.Add(2)
+				go func() {
+					defer wg.Done()
+					for _, event := range lineToEvents(line) {
+						exporter.handleEvent(event)
+					}
+				}()
+				go func() {
+					defer wg.Done()
+					for _, event := range lineToEvents(line) {
+						exporter.handleEvent(event)
+					}
+				}()
 				// go func() { events <- lineToEvents("foo16:2|c") }()
 				// go func() { events <- lineToEvents("foo17:2|c") }()
 
 				for _, event := range lineToEvents(line) {
 					exporter.handleEvent(event)
 				}
-				for _, event := range lineToEvents(line) {
-					exporter.handleEvent(event)
-				}
-				for _, event := range lineToEvents(line) {
-					exporter.handleEvent(event)
-				}
+				// for _, event := range lineToEvents(line) {
+				// 	exporter.handleEvent(event)
+				// }
+				// for _, event := range lineToEvents(line) {
+				// 	exporter.handleEvent(event)
+				// }
 				wg.Wait()
 			}
 		}
