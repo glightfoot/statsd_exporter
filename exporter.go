@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -75,83 +76,124 @@ func hashNameAndLabels(name string, labels prometheus.Labels) uint64 {
 	return hash.Sum64()
 }
 
+var globalMutex sync.Mutex
+
+type Counter struct {
+	CounterVec *prometheus.CounterVec
+	Mutex      *sync.Mutex
+}
+
 type CounterContainer struct {
 	//           metric name
-	Elements map[string]*prometheus.CounterVec
+	Elements map[string]*Counter
+	Mutex    *sync.Mutex
 }
 
 func NewCounterContainer() *CounterContainer {
 	return &CounterContainer{
-		Elements: make(map[string]*prometheus.CounterVec),
+		Elements: make(map[string]*Counter),
+		Mutex:    &sync.Mutex{},
 	}
 }
 
 func (c *CounterContainer) Get(metricName string, labels prometheus.Labels, help string) (prometheus.Counter, error) {
-	counterVec, ok := c.Elements[metricName]
+	c.Mutex.Lock()
+	counter, ok := c.Elements[metricName]
+	c.Mutex.Unlock()
 	if !ok {
-		counterVec = prometheus.NewCounterVec(prometheus.CounterOpts{
+		counterVec := prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: metricName,
 			Help: help,
 		}, labelNames(labels))
 		if err := prometheus.Register(counterVec); err != nil {
 			return nil, err
 		}
-		c.Elements[metricName] = counterVec
+		counter = &Counter{CounterVec: counterVec, Mutex: &sync.Mutex{}}
+		c.Mutex.Lock()
+		c.Elements[metricName] = counter
+		c.Mutex.Unlock()
 	}
-	return counterVec.GetMetricWith(labels)
+	counterRaw, err := counter.CounterVec.GetMetricWith(labels)
+	return counterRaw, err
 }
 
 func (c *CounterContainer) Delete(metricName string, labels prometheus.Labels) {
 	if _, ok := c.Elements[metricName]; ok {
-		c.Elements[metricName].Delete(labels)
+		c.Mutex.Lock()
+		c.Elements[metricName].CounterVec.Delete(labels)
+		c.Mutex.Unlock()
 	}
 }
 
+type Gauge struct {
+	GaugeVec *prometheus.GaugeVec
+	Mutex    *sync.Mutex
+}
+
 type GaugeContainer struct {
-	Elements map[string]*prometheus.GaugeVec
+	Elements map[string]*Gauge
+	Mutex    *sync.Mutex
 }
 
 func NewGaugeContainer() *GaugeContainer {
 	return &GaugeContainer{
-		Elements: make(map[string]*prometheus.GaugeVec),
+		Elements: make(map[string]*Gauge),
+		Mutex:    &sync.Mutex{},
 	}
 }
 
 func (c *GaugeContainer) Get(metricName string, labels prometheus.Labels, help string) (prometheus.Gauge, error) {
-	gaugeVec, ok := c.Elements[metricName]
+	c.Mutex.Lock()
+	gauge, ok := c.Elements[metricName]
+	c.Mutex.Unlock()
 	if !ok {
-		gaugeVec = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+
+		gaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: metricName,
 			Help: help,
 		}, labelNames(labels))
 		if err := prometheus.Register(gaugeVec); err != nil {
 			return nil, err
 		}
-		c.Elements[metricName] = gaugeVec
+		gauge = &Gauge{GaugeVec: gaugeVec, Mutex: &sync.Mutex{}}
+		c.Mutex.Lock()
+		c.Elements[metricName] = gauge
+		c.Mutex.Unlock()
 	}
-	return gaugeVec.GetMetricWith(labels)
+	return gauge.GaugeVec.GetMetricWith(labels)
 }
 
 func (c *GaugeContainer) Delete(metricName string, labels prometheus.Labels) {
 	if _, ok := c.Elements[metricName]; ok {
-		c.Elements[metricName].Delete(labels)
+		c.Mutex.Lock()
+		c.Elements[metricName].GaugeVec.Delete(labels)
+		c.Mutex.Unlock()
 	}
 }
 
+type Summary struct {
+	SummaryVec *prometheus.SummaryVec
+	Mutex      *sync.Mutex
+}
+
 type SummaryContainer struct {
-	Elements map[string]*prometheus.SummaryVec
+	Elements map[string]*Summary
 	mapper   *mapper.MetricMapper
+	Mutex    *sync.Mutex
 }
 
 func NewSummaryContainer(mapper *mapper.MetricMapper) *SummaryContainer {
 	return &SummaryContainer{
-		Elements: make(map[string]*prometheus.SummaryVec),
+		Elements: make(map[string]*Summary),
 		mapper:   mapper,
+		Mutex:    &sync.Mutex{},
 	}
 }
 
 func (c *SummaryContainer) Get(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping) (prometheus.Observer, error) {
-	summaryVec, ok := c.Elements[metricName]
+	c.Mutex.Lock()
+	summary, ok := c.Elements[metricName]
+	c.Mutex.Unlock()
 	if !ok {
 		quantiles := c.mapper.Defaults.Quantiles
 		if mapping != nil && mapping.Quantiles != nil && len(mapping.Quantiles) > 0 {
@@ -161,7 +203,7 @@ func (c *SummaryContainer) Get(metricName string, labels prometheus.Labels, help
 		for _, q := range quantiles {
 			objectives[q.Quantile] = q.Error
 		}
-		summaryVec = prometheus.NewSummaryVec(
+		summaryVec := prometheus.NewSummaryVec(
 			prometheus.SummaryOpts{
 				Name:       metricName,
 				Help:       help,
@@ -170,37 +212,52 @@ func (c *SummaryContainer) Get(metricName string, labels prometheus.Labels, help
 		if err := prometheus.Register(summaryVec); err != nil {
 			return nil, err
 		}
-		c.Elements[metricName] = summaryVec
+		summary = &Summary{SummaryVec: summaryVec, Mutex: &sync.Mutex{}}
+		c.Mutex.Lock()
+		c.Elements[metricName] = summary
+		c.Mutex.Unlock()
 	}
-	return summaryVec.GetMetricWith(labels)
+
+	return summary.SummaryVec.GetMetricWith(labels)
 }
 
 func (c *SummaryContainer) Delete(metricName string, labels prometheus.Labels) {
 	if _, ok := c.Elements[metricName]; ok {
-		c.Elements[metricName].Delete(labels)
+		c.Mutex.Lock()
+		c.Elements[metricName].SummaryVec.Delete(labels)
+		c.Mutex.Unlock()
 	}
 }
 
+type Histogram struct {
+	HistogramVec *prometheus.HistogramVec
+	Mutex        *sync.Mutex
+}
+
 type HistogramContainer struct {
-	Elements map[string]*prometheus.HistogramVec
+	Elements map[string]*Histogram
 	mapper   *mapper.MetricMapper
+	Mutex    *sync.Mutex
 }
 
 func NewHistogramContainer(mapper *mapper.MetricMapper) *HistogramContainer {
 	return &HistogramContainer{
-		Elements: make(map[string]*prometheus.HistogramVec),
+		Elements: make(map[string]*Histogram),
 		mapper:   mapper,
+		Mutex:    &sync.Mutex{},
 	}
 }
 
 func (c *HistogramContainer) Get(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping) (prometheus.Observer, error) {
-	histogramVec, ok := c.Elements[metricName]
+	c.Mutex.Lock()
+	histogram, ok := c.Elements[metricName]
+	c.Mutex.Unlock()
 	if !ok {
 		buckets := c.mapper.Defaults.Buckets
 		if mapping != nil && mapping.Buckets != nil && len(mapping.Buckets) > 0 {
 			buckets = mapping.Buckets
 		}
-		histogramVec = prometheus.NewHistogramVec(
+		histogramVec := prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    metricName,
 				Help:    help,
@@ -209,14 +266,19 @@ func (c *HistogramContainer) Get(metricName string, labels prometheus.Labels, he
 		if err := prometheus.Register(histogramVec); err != nil {
 			return nil, err
 		}
-		c.Elements[metricName] = histogramVec
+		histogram = &Histogram{HistogramVec: histogramVec, Mutex: &sync.Mutex{}}
+		c.Mutex.Lock()
+		c.Elements[metricName] = histogram
+		c.Mutex.Unlock()
 	}
-	return histogramVec.GetMetricWith(labels)
+	return histogram.HistogramVec.GetMetricWith(labels)
 }
 
 func (c *HistogramContainer) Delete(metricName string, labels prometheus.Labels) {
 	if _, ok := c.Elements[metricName]; ok {
-		c.Elements[metricName].Delete(labels)
+		c.Mutex.Lock()
+		c.Elements[metricName].HistogramVec.Delete(labels)
+		c.Mutex.Unlock()
 	}
 }
 
@@ -293,11 +355,16 @@ func escapeMetricName(metricName string) string {
 // terminates when the channel is closed.
 func (b *Exporter) Listen(e <-chan Events) {
 	removeStaleMetricsTicker := clock.NewTicker(time.Second)
+	go b.removeStaleMetricsLoop(removeStaleMetricsTicker)
+	threads := 4
+	for i := 0; i < threads; i++ {
+		go b.Listener(removeStaleMetricsTicker, e)
+	}
+}
 
+func (b *Exporter) Listener(removeStaleMetricsTicker *time.Ticker, e <-chan Events) {
 	for {
 		select {
-		case <-removeStaleMetricsTicker.C:
-			b.removeStaleMetrics()
 		case events, ok := <-e:
 			if !ok {
 				log.Debug("Channel is closed. Break out of Exporter.Listener.")
@@ -438,6 +505,23 @@ func (b *Exporter) handleEvent(event Event) {
 	}
 }
 
+func (b *Exporter) removeStaleMetricsLoop(removeStaleMetricsTicker *time.Ticker) {
+	for {
+		select {
+		case _, ok := <-removeStaleMetricsTicker.C:
+			if ok {
+				b.removeStaleMetrics()
+			} else {
+				return
+			}
+		default:
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	b.removeStaleMetricsLoop(removeStaleMetricsTicker)
+}
+
 // removeStaleMetrics removes label values set from metric with stale values
 func (b *Exporter) removeStaleMetrics() {
 	now := clock.Now()
@@ -460,12 +544,17 @@ func (b *Exporter) removeStaleMetrics() {
 
 // saveLabelValues stores label values set to labelValues and update lastRegisteredAt time and ttl value
 func (b *Exporter) saveLabelValues(metricName string, labels prometheus.Labels, ttl time.Duration) {
+	globalMutex.Lock()
 	metric, hasMetric := b.labelValues[metricName]
+	globalMutex.Unlock()
 	if !hasMetric {
 		metric = make(map[uint64]*LabelValues)
+		globalMutex.Lock()
 		b.labelValues[metricName] = metric
+		globalMutex.Unlock()
 	}
 	hash := hashNameAndLabels(metricName, labels)
+	globalMutex.Lock()
 	metricLabelValues, ok := metric[hash]
 	if !ok {
 		metricLabelValues = &LabelValues{
@@ -474,6 +563,7 @@ func (b *Exporter) saveLabelValues(metricName string, labels prometheus.Labels, 
 		}
 		b.labelValues[metricName][hash] = metricLabelValues
 	}
+	globalMutex.Unlock()
 	now := clock.Now()
 	metricLabelValues.lastRegisteredAt = now
 	// Update ttl from mapping
@@ -643,7 +733,7 @@ type StatsDUDPListener struct {
 }
 
 func (l *StatsDUDPListener) Listen(e chan<- Events) {
-	threads := 4
+	threads := 100
 	for i := 0; i < threads; i++ {
 		go l.Listener(e)
 	}
@@ -656,7 +746,8 @@ func (l *StatsDUDPListener) Listener(e chan<- Events) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		data := buf[0:n]
+		//data := buf[0:n]
+		data := append([]byte(nil), buf[0:n]...)
 		go l.handlePacket(data, e)
 	}
 }

@@ -230,12 +230,14 @@ mappings:
 	clock.ClockInstance.Instant = time.Unix(0, 0)
 	events <- ev
 	events <- Events{}
+	time.Sleep(100 * time.Millisecond)
 
 	// Check values
 	metrics, err = prometheus.DefaultGatherer.Gather()
 	if err != nil {
 		t.Fatal("Gather should not fail")
 	}
+
 	foobarValue = getFloat64(metrics, "foobar", prometheus.Labels{})
 	bazquxValue = getFloat64(metrics, "bazqux", prometheus.Labels{})
 	if foobarValue == nil || bazquxValue == nil {

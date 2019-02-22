@@ -162,7 +162,7 @@ func main() {
 
 	go serveHTTP(*listenAddress, *metricsEndpoint)
 
-	events := make(chan Events, 1024)
+	events := make(chan Events, 10240)
 	defer close(events)
 
 	if *statsdListenUDP != "" {
