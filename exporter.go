@@ -345,8 +345,10 @@ func (b *Exporter) Listen(threadCount int, packetHandlers int, e <-chan Events) 
 	removeStaleMetricsTicker := clock.NewTicker(time.Second * 1)
 	go b.removeStaleMetricsLoop(removeStaleMetricsTicker)
 
-	for i := 1; i < 10; i++ {
-		go b.Listener(removeStaleMetricsTicker, e, packetHandlers)
+	concurrentHandlersPerThread := packetHandlers / threadCount
+
+	for i := 1; i < threadCount; i++ {
+		go b.Listener(removeStaleMetricsTicker, e, concurrentHandlersPerThread)
 	}
 	b.Listener(removeStaleMetricsTicker, e, packetHandlers)
 }
