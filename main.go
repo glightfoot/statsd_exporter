@@ -89,7 +89,7 @@ func tcpAddrFromString(addr string) *net.TCPAddr {
 	}
 }
 
-func watchConfig(fileName string, mapper *mapper.MetricMapper) {
+func watchConfig(fileName string, mapper *mapper.MetricMapper, useMetricCache bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -104,7 +104,7 @@ func watchConfig(fileName string, mapper *mapper.MetricMapper) {
 		select {
 		case ev := <-watcher.Event:
 			log.Infof("Config file changed (%s), attempting reload", ev)
-			err = mapper.InitFromFile(fileName)
+			err = mapper.InitFromFile(fileName, useMetricCache)
 			if err != nil {
 				log.Errorln("Error reloading config:", err)
 				configLoads.WithLabelValues("failure").Inc()
@@ -147,10 +147,12 @@ func main() {
 		dumpFSMPath     = kingpin.Flag("debug.dump-fsm", "The path to dump internal FSM generated for glob matching as Dot file.").Default("").String()
 
 		//Concurrency performance tuning
-		udpListenerThreads = kingpin.Flag("udp-listener.threads", "The number of listener threads to receive UDP traffic.").Default("4").Int()
-		udpPacketHandlers  = kingpin.Flag("udp-listener.handlers", "The number of concurrent packet handlers").Default("10000").Int()
-		eventListenerThreads = kingpin.Flag("event-listener.threads", "Number of listener threads to handle metric events").Default("1").Int()
+		udpListenerThreads    = kingpin.Flag("udp-listener.threads", "The number of listener threads to receive UDP traffic.").Default("4").Int()
+		udpPacketHandlers     = kingpin.Flag("udp-listener.handlers", "The number of concurrent packet handlers").Default("10000").Int()
+		eventListenerThreads  = kingpin.Flag("event-listener.threads", "Number of listener threads to handle metric events").Default("1").Int()
 		eventListenerHandlers = kingpin.Flag("event-listener.handlers", "Number of listener handlers to handle metric events").Default("1000").Int()
+
+		useMetricCache = kingpin.Flag("statsd.enable-mapping-cache", "Should you use the metric mapping cache. Increases throughput at the cost of memory").Default("true").Bool()
 	)
 
 	log.AddFlags(kingpin.CommandLine)
@@ -204,7 +206,7 @@ func main() {
 
 	mapper := &mapper.MetricMapper{MappingsCount: mappingsCount}
 	if *mappingConfig != "" {
-		err := mapper.InitFromFile(*mappingConfig)
+		err := mapper.InitFromFile(*mappingConfig, *useMetricCache)
 		if err != nil {
 			log.Fatal("Error loading config:", err)
 		}
@@ -214,7 +216,7 @@ func main() {
 				log.Fatal("Error dumping FSM:", err)
 			}
 		}
-		go watchConfig(*mappingConfig, mapper)
+		go watchConfig(*mappingConfig, mapper, *useMetricCache)
 	}
 	exporter := NewExporter(mapper)
 	exporter.Listen(*eventListenerThreads, *eventListenerHandlers, events)

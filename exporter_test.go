@@ -196,7 +196,7 @@ mappings:
 `
 	// Create mapper from config and start an Exporter with a synchronous channel
 	testMapper := &mapper.MetricMapper{}
-	err := testMapper.InitFromYAMLString(config)
+	err := testMapper.InitFromYAMLString(config, false)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)
 	}

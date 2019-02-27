@@ -49,6 +49,8 @@ type MetricMapper struct {
 	FSM      *fsm.FSM
 	doFSM    bool
 	doRegex  bool
+	useCache bool
+	cache    *MetricMapperCache
 	Mutex    sync.RWMutex
 
 	MappingsCount prometheus.Gauge
@@ -83,7 +85,7 @@ var defaultQuantiles = []metricObjective{
 	{Quantile: 0.99, Error: 0.001},
 }
 
-func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
+func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) error {
 	var n MetricMapper
 
 	if err := yaml.Unmarshal([]byte(fileContents), &n); err != nil {
@@ -189,6 +191,8 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
 
 	m.Defaults = n.Defaults
 	m.Mappings = n.Mappings
+	m.cache = NewMetricMapperCache()
+	m.useCache = useCache
 	if n.doFSM {
 		var mappings []string
 		for _, mapping := range n.Mappings {
@@ -210,18 +214,30 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
 	return nil
 }
 
-func (m *MetricMapper) InitFromFile(fileName string) error {
+func (m *MetricMapper) InitFromFile(fileName string, useCache bool) error {
 	mappingStr, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return err
 	}
-	return m.InitFromYAMLString(string(mappingStr))
+	return m.InitFromYAMLString(string(mappingStr), useCache)
 }
 
 func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricType) (*MetricMapping, prometheus.Labels, bool) {
 	m.Mutex.RLock()
 	defer m.Mutex.RUnlock()
-
+	if m.useCache {
+		if m.cache == nil {
+			m.Mutex.RUnlock()
+			m.Mutex.Lock()
+			m.cache = NewMetricMapperCache()
+			m.Mutex.Unlock()
+			m.Mutex.RLock()
+		}
+		result, cached := m.cache.Get(statsdMetric)
+		if cached {
+			return result.Mapping, result.Labels, true
+		}
+	}
 	// glob matching
 	if m.doFSM {
 		finalState, captures := m.FSM.GetMapping(statsdMetric, string(statsdMetricType))
@@ -233,6 +249,11 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 			for index, formatter := range result.labelFormatters {
 				labels[result.labelKeys[index]] = formatter.Format(captures)
 			}
+
+			if m.useCache {
+				m.cache.Add(statsdMetric, result, labels)
+			}
+
 			return result, labels, true
 		} else if !m.doRegex {
 			// if there's no regex match type, return immediately
@@ -266,6 +287,10 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 		for label, valueExpr := range mapping.Labels {
 			value := mapping.regex.ExpandString([]byte{}, valueExpr, statsdMetric, matches)
 			labels[label] = string(value)
+		}
+
+		if m.useCache {
+			m.cache.Add(statsdMetric, &mapping, labels)
 		}
 
 		return &mapping, labels, true
