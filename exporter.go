@@ -317,6 +317,7 @@ type LabelValues struct {
 	lastRegisteredAt time.Time
 	labels           prometheus.Labels
 	ttl              time.Duration
+	mutex            *sync.RWMutex
 }
 
 type Exporter struct {
@@ -536,9 +537,12 @@ func (b *Exporter) removeStaleMetrics() {
 	globalMutex.Lock()
 	for metricName := range b.labelValues {
 		for hash, lvs := range b.labelValues[metricName] {
+			lvs.mutex.RLock()
 			if lvs.ttl == 0 {
+				lvs.mutex.RUnlock()
 				continue
 			}
+			lvs.mutex.RUnlock()
 			if lvs.lastRegisteredAt.Add(lvs.ttl).Before(now) {
 				b.Counters.Delete(metricName, lvs.labels)
 				b.Gauges.Delete(metricName, lvs.labels)
@@ -570,17 +574,18 @@ func (b *Exporter) saveLabelValues(metricName string, labels prometheus.Labels, 
 		metricLabelValues = &LabelValues{
 			labels: labels,
 			ttl:    ttl,
+			mutex:  &sync.RWMutex{},
 		}
 		globalMutex.Lock()
 		b.labelValues[metricName][hash] = metricLabelValues
 		globalMutex.Unlock()
 	}
 	now := clock.Now()
-	globalMutex.Lock()
+	metricLabelValues.mutex.Lock()
 	metricLabelValues.lastRegisteredAt = now
 	// Update ttl from mapping
 	metricLabelValues.ttl = ttl
-	globalMutex.Unlock()
+	metricLabelValues.mutex.Unlock()
 }
 
 func NewExporter(mapper *mapper.MetricMapper) *Exporter {
