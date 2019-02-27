@@ -145,8 +145,12 @@ func main() {
 		mappingConfig   = kingpin.Flag("statsd.mapping-config", "Metric mapping configuration file name.").String()
 		readBuffer      = kingpin.Flag("statsd.read-buffer", "Size (in bytes) of the operating system's transmit read buffer associated with the UDP connection. Please make sure the kernel parameters net.core.rmem_max is set to a value greater than the value specified.").Int()
 		dumpFSMPath     = kingpin.Flag("debug.dump-fsm", "The path to dump internal FSM generated for glob matching as Dot file.").Default("").String()
-		listenerThreads = kingpin.Flag("listeners.threads", "The number of listener threads to receive UDP traffic.").Default("4").Int()
-		packetHandlers  = kingpin.Flag("listeners.handlers", "The number of concurrent packet handlers").Default("10000").Int()
+
+		//Concurrency performance tuning
+		udpListenerThreads = kingpin.Flag("udp-listener.threads", "The number of listener threads to receive UDP traffic.").Default("4").Int()
+		udpPacketHandlers  = kingpin.Flag("udp-listener.handlers", "The number of concurrent packet handlers").Default("10000").Int()
+		eventListenerThreads = kingpin.Flag("event-listener.threads", "Number of listener threads to handle metric events").Default("1").Int()
+		eventListenerHandlers = kingpin.Flag("event-listener.handlers", "Number of listener handlers to handle metric events").Default("1000").Int()
 	)
 
 	log.AddFlags(kingpin.CommandLine)
@@ -183,7 +187,7 @@ func main() {
 		}
 
 		ul := &StatsDUDPListener{conn: uconn}
-		go ul.Listen(*listenerThreads, *packetHandlers, events)
+		go ul.Listen(*udpListenerThreads, *udpPacketHandlers, events)
 	}
 
 	if *statsdListenTCP != "" {
@@ -213,5 +217,5 @@ func main() {
 		go watchConfig(*mappingConfig, mapper)
 	}
 	exporter := NewExporter(mapper)
-	exporter.Listen(*listenerThreads, *packetHandlers, events)
+	exporter.Listen(*eventListenerThreads, *eventListenerHandlers, events)
 }
