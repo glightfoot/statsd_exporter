@@ -275,7 +275,7 @@ func main() {
 	}
 
 	if runtime.GOOS == "linux" {
-		watchUDPBuffers(0, 0)
+		go watchUDPBuffers(0, 0)
 	}
 
 	mapper := &mapper.MetricMapper{MappingsCount: mappingsCount}
