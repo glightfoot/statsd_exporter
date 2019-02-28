@@ -152,7 +152,6 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 		log.Info("Dropped count went negative! Abandoning UDP buffer parsing")
 		diff = 0
 		droppedUDP = lastDropped
-		return
 	}
 	udpBufferDropped.WithLabelValues(label).Inc()
 
@@ -166,7 +165,6 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 		log.Info("Dropped count went negative! Abandoning UDP buffer parsing")
 		diff = 0
 		droppedUDP6 = lastDropped6
-		return
 	}
 	udpBufferDropped.WithLabelValues(label).Inc()
 
@@ -192,8 +190,8 @@ func parseProcfsNetFile(filename string) (int, int) {
 
 		fields := strings.Fields(s.Text())
 
-		queuedLine, err := strconv.ParseInt(strings.Split(fields[4], ":")[1], 16, 64)
-		queued = queued + queuedLine
+		queuedLine, err := strconv.ParseInt(strings.Split(fields[4], ":")[1], 16, 32)
+		queued = queued + int(queuedLine)
 		if err != nil {
 			log.Info("Unable to parse queued UDP buffers:", err)
 			return 0, 0
