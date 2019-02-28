@@ -177,7 +177,7 @@ func watchUDPBuffers(lastQueued int, lastDropped int, lastQueued6 int, lastDropp
 	udpBufferDropped.WithLabelValues(label).Inc()
 
 	time.Sleep(10 * time.Second)
-	watchUDPDrops(queuedUDP, droppedUDP, queuedUDP6, droppedUDP6)
+	watchUDPBuffers(queuedUDP, droppedUDP, queuedUDP6, droppedUDP6)
 }
 
 func parseProcfsNetFile(filename string) (int, int) {
