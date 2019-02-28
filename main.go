@@ -153,7 +153,7 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 		diff = 0
 		droppedUDP = lastDropped
 	}
-	udpBufferDropped.WithLabelValues(label).Inc(diff)
+	udpBufferDropped.WithLabelValues(label).Add(float64(diff))
 
 	queuedUDP6, droppedUDP6 := parseProcfsNetFile("/proc/" + myPid + "/net/udp6")
 	label = "udp6"
@@ -166,7 +166,7 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 		diff = 0
 		droppedUDP6 = lastDropped6
 	}
-	udpBufferDropped.WithLabelValues(label).Inc(diff)
+	udpBufferDropped.WithLabelValues(label).Add(float64(diff))
 
 	time.Sleep(10 * time.Second)
 	watchUDPBuffers(droppedUDP, droppedUDP6)
