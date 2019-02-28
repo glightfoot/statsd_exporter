@@ -139,20 +139,15 @@ func dumpFSM(mapper *mapper.MetricMapper, dumpFilename string) error {
 	return nil
 }
 
-func watchUDPBuffers(lastQueued int, lastDropped int, lastQueued6 int, lastDropped6 int) {
+func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 	myPid := strconv.Itoa(os.Getpid())
 
 	queuedUDP, droppedUDP := parseProcfsNetFile("/proc/" + myPid + "/net/udp")
 	label := "udp"
 
-	diff := queuedUDP - lastQueued
-	if diff < 0 {
-		log.Info("Queue count went negative! Abandoning UDP buffer parsing")
-		return
-	}
-	udpBufferQueued.WithLabelValues(label).Inc()
+	udpBufferQueued.WithLabelValues(label).Set(float64(queuedUDP))
 
-	diff = droppedUDP - lastDropped
+	diff := droppedUDP - lastDropped
 	if diff < 0 {
 		log.Info("Dropped count went negative! Abandoning UDP buffer parsing")
 		return
@@ -162,12 +157,7 @@ func watchUDPBuffers(lastQueued int, lastDropped int, lastQueued6 int, lastDropp
 	queuedUDP6, droppedUDP6 := parseProcfsNetFile("/proc/" + myPid + "/net/udp6")
 	label = "udp6"
 
-	diff = queuedUDP6 - lastQueued6
-	if diff < 0 {
-		log.Info("Queue count went negative! Abandoning UDP buffer parsing")
-		return
-	}
-	udpBufferQueued.WithLabelValues(label).Inc()
+	udpBufferQueued.WithLabelValues(label).Set(float64(queuedUDP6))
 
 	diff = droppedUDP6 - lastDropped6
 	if diff < 0 {
@@ -177,7 +167,7 @@ func watchUDPBuffers(lastQueued int, lastDropped int, lastQueued6 int, lastDropp
 	udpBufferDropped.WithLabelValues(label).Inc()
 
 	time.Sleep(10 * time.Second)
-	watchUDPBuffers(queuedUDP, droppedUDP, queuedUDP6, droppedUDP6)
+	watchUDPBuffers(droppedUDP, droppedUDP6)
 }
 
 func parseProcfsNetFile(filename string) (int, int) {
@@ -285,7 +275,7 @@ func main() {
 	}
 
 	if runtime.GOOS == "linux" {
-		watchUDPBuffers(0, 0, 0, 0)
+		watchUDPBuffers(0, 0)
 	}
 
 	mapper := &mapper.MetricMapper{MappingsCount: mappingsCount}
