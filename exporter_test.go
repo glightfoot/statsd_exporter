@@ -308,7 +308,7 @@ func TestProcfsWatching(t *testing.T) {
 	}
 
 	if queued != 34 {
-		t.Fatal("Queued should be 34")
+		t.Fatal("Queued should be 52")
 	}
 }
 
