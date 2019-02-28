@@ -188,7 +188,7 @@ func parseProcfsNetFile(filename string) (int, int) {
 
 		fields := strings.Fields(s.Text())
 
-		queuedLine, err := strconv.Atoi(strings.Split(fields[4], ":")[1])
+		queuedLine, err := strconv.ParseInt(strings.Split(fields[4], ":")[1], 16, 64)
 		queued = queued + queuedLine
 		if err != nil {
 			log.Info("Unable to parse queued UDP buffers:", err)
