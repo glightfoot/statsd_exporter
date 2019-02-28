@@ -150,8 +150,8 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 	diff := droppedUDP - lastDropped
 	if diff < 0 {
 		log.Info("Dropped count went negative! Abandoning UDP buffer parsing")
-		time.Sleep(10 * time.Second)
-		watchUDPBuffers(droppedUDP, droppedUDP6)
+		diff = 0
+		droppedUDP = lastDropped
 		return
 	}
 	udpBufferDropped.WithLabelValues(label).Inc()
@@ -164,8 +164,8 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 	diff = droppedUDP6 - lastDropped6
 	if diff < 0 {
 		log.Info("Dropped count went negative! Abandoning UDP buffer parsing")
-		time.Sleep(10 * time.Second)
-		watchUDPBuffers(droppedUDP, droppedUDP6)
+		diff = 0
+		droppedUDP6 = lastDropped6
 		return
 	}
 	udpBufferDropped.WithLabelValues(label).Inc()
