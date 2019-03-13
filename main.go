@@ -107,13 +107,19 @@ func watchConfig(fileName string, mapper *mapper.MetricMapper, useMetricCache bo
 		select {
 		case ev := <-watcher.Event:
 			log.Infof("Config file changed (%s), attempting reload", ev)
-			err = mapper.InitFromFile(fileName, useMetricCache)
+			reloaded, err := mapper.InitFromFile(fileName, useMetricCache)
 			if err != nil {
 				log.Errorln("Error reloading config:", err)
 				configLoads.WithLabelValues("failure").Inc()
-			} else {
+				continue
+			}
+
+			if reloaded == true {
 				log.Infoln("Config reloaded successfully")
 				configLoads.WithLabelValues("success").Inc()
+			} else {
+				log.Infoln("Config reload skipped")
+				configLoads.WithLabelValues("skipped").Inc()
 			}
 			// Re-add the file watcher since it can get lost on some changes. E.g.
 			// saving a file with vim results in a RENAME-MODIFY-DELETE event
@@ -282,7 +288,7 @@ func main() {
 
 	mapper := &mapper.MetricMapper{MappingsCount: mappingsCount}
 	if *mappingConfig != "" {
-		err := mapper.InitFromFile(*mappingConfig, *useMetricCache)
+		_, err := mapper.InitFromFile(*mappingConfig, *useMetricCache)
 		if err != nil {
 			log.Fatal("Error loading config:", err)
 		}

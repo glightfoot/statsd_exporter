@@ -16,6 +16,7 @@ package mapper
 import (
 	"fmt"
 	"io/ioutil"
+	"reflect"
 	"regexp"
 	"sync"
 
@@ -85,11 +86,11 @@ var defaultQuantiles = []metricObjective{
 	{Quantile: 0.99, Error: 0.001},
 }
 
-func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) error {
+func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) (bool, error) {
 	var n MetricMapper
 
 	if err := yaml.Unmarshal([]byte(fileContents), &n); err != nil {
-		return err
+		return false, err
 	}
 
 	if n.Defaults.Buckets == nil || len(n.Defaults.Buckets) == 0 {
@@ -117,16 +118,16 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) er
 		// check that label is correct
 		for k := range currentMapping.Labels {
 			if !labelNameRE.MatchString(k) {
-				return fmt.Errorf("invalid label key: %s", k)
+				return false, fmt.Errorf("invalid label key: %s", k)
 			}
 		}
 
 		if currentMapping.Name == "" {
-			return fmt.Errorf("line %d: metric mapping didn't set a metric name", i)
+			return false, fmt.Errorf("line %d: metric mapping didn't set a metric name", i)
 		}
 
 		if !metricNameRE.MatchString(currentMapping.Name) {
-			return fmt.Errorf("metric name '%s' doesn't match regex '%s'", currentMapping.Name, metricNameRE)
+			return false, fmt.Errorf("metric name '%s' doesn't match regex '%s'", currentMapping.Name, metricNameRE)
 		}
 
 		if currentMapping.MatchType == "" {
@@ -140,7 +141,7 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) er
 		if currentMapping.MatchType == MatchTypeGlob {
 			n.doFSM = true
 			if !metricLineRE.MatchString(currentMapping.Match) {
-				return fmt.Errorf("invalid match: %s", currentMapping.Match)
+				return false, fmt.Errorf("invalid match: %s", currentMapping.Match)
 			}
 
 			captureCount := n.FSM.AddState(currentMapping.Match, string(currentMapping.MatchMetricType),
@@ -161,7 +162,7 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) er
 
 		} else {
 			if regex, err := regexp.Compile(currentMapping.Match); err != nil {
-				return fmt.Errorf("invalid regex %s in mapping: %v", currentMapping.Match, err)
+				return false, fmt.Errorf("invalid regex %s in mapping: %v", currentMapping.Match, err)
 			} else {
 				currentMapping.regex = regex
 			}
@@ -186,38 +187,41 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) er
 
 	}
 
-	m.Mutex.Lock()
-	defer m.Mutex.Unlock()
+	if !reflect.DeepEqual(m.Defaults, n.Defaults) || !reflect.DeepEqual(m.Mappings, n.Mappings) || m.useCache != useCache || m.doFSM != n.doFSM {
+		m.Mutex.Lock()
+		defer m.Mutex.Unlock()
 
-	m.Defaults = n.Defaults
-	m.Mappings = n.Mappings
-	m.cache = NewMetricMapperCache()
-	m.useCache = useCache
-	if n.doFSM {
-		var mappings []string
-		for _, mapping := range n.Mappings {
-			if mapping.MatchType == MatchTypeGlob {
-				mappings = append(mappings, mapping.Match)
+		m.Defaults = n.Defaults
+		m.Mappings = n.Mappings
+		m.cache = NewMetricMapperCache()
+		m.useCache = useCache
+		if n.doFSM {
+			var mappings []string
+			for _, mapping := range n.Mappings {
+				if mapping.MatchType == MatchTypeGlob {
+					mappings = append(mappings, mapping.Match)
+				}
 			}
+			n.FSM.BacktrackingNeeded = fsm.TestIfNeedBacktracking(mappings, n.FSM.OrderingDisabled)
+
+			m.FSM = n.FSM
+			m.doRegex = n.doRegex
 		}
-		n.FSM.BacktrackingNeeded = fsm.TestIfNeedBacktracking(mappings, n.FSM.OrderingDisabled)
+		m.doFSM = n.doFSM
 
-		m.FSM = n.FSM
-		m.doRegex = n.doRegex
+		if m.MappingsCount != nil {
+			m.MappingsCount.Set(float64(len(n.Mappings)))
+		}
+		return true, nil
+	} else {
+		return false, nil
 	}
-	m.doFSM = n.doFSM
-
-	if m.MappingsCount != nil {
-		m.MappingsCount.Set(float64(len(n.Mappings)))
-	}
-
-	return nil
 }
 
-func (m *MetricMapper) InitFromFile(fileName string, useCache bool) error {
+func (m *MetricMapper) InitFromFile(fileName string, useCache bool) (bool, error) {
 	mappingStr, err := ioutil.ReadFile(fileName)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return m.InitFromYAMLString(string(mappingStr), useCache)
 }
