@@ -787,6 +787,9 @@ func (l *StatsDUDPListener) Listener(e chan<- Events, concurrentPacketHandlers i
 
 		default:
 			l.handlePacket(data[0:n], e)
+			go func() {
+				log.Debugln("Overflowing UDP message buffer!")
+			}()
 		}
 	}
 }
