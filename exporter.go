@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -789,6 +790,8 @@ func (l *StatsDUDPListener) Listener(e chan<- Events, concurrentPacketHandlers i
 			l.handlePacket(data[0:n], e)
 			go func() {
 				log.Debugln("Overflowing UDP message buffer!")
+				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+				pprof.Lookup("block").WriteTo(os.Stdout, 1)
 			}()
 		}
 	}
