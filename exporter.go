@@ -771,6 +771,7 @@ func (l *StatsDUDPListener) Listen(threadCount int, packetHandlers int, e chan<-
 func (l *StatsDUDPListener) Listener(e chan<- Events, concurrentPacketHandlers int) {
 	var sem = make(chan struct{}, concurrentPacketHandlers)
 	buf := make([]byte, 65535)
+	routineDumped := false
 	for {
 		n, _, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
@@ -789,10 +790,13 @@ func (l *StatsDUDPListener) Listener(e chan<- Events, concurrentPacketHandlers i
 
 		default:
 			l.handlePacket(data[0:n], e)
-			go func() {
-				log.Debugln("Overflowing UDP message buffer!")
+			if routineDumped == false {
+				routineDumped = true
 				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 				pprof.Lookup("block").WriteTo(os.Stdout, 1)
+			}
+			go func() {
+				log.Debugln("Overflowing UDP message buffer!")
 			}()
 		}
 	}

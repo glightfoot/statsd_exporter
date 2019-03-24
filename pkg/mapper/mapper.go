@@ -230,13 +230,6 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 	m.Mutex.RLock()
 	defer m.Mutex.RUnlock()
 	if m.useCache {
-		if m.cache == nil {
-			m.Mutex.RUnlock()
-			m.Mutex.Lock()
-			m.cache = NewMetricMapperCache()
-			m.Mutex.Unlock()
-			m.Mutex.RLock()
-		}
 		result, cached := m.cache.Get(statsdMetric)
 		if cached {
 			return result.Mapping, result.Labels, true

@@ -19,36 +19,28 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var cacheMutex = &sync.RWMutex{}
-
 type MetricMapperCacheResult struct {
 	Mapping *MetricMapping
 	Labels  prometheus.Labels
 }
 
 type MetricMapperCache struct {
-	cache map[string]*MetricMapperCacheResult
+	cache sync.Map
 }
 
 func NewMetricMapperCache() *MetricMapperCache {
-	cacheMutex.Lock()
-	defer cacheMutex.Unlock()
-	return &MetricMapperCache{cache: make(map[string]*MetricMapperCacheResult)}
+	return &MetricMapperCache{}
 }
 
 func (m *MetricMapperCache) Get(metricString string) (*MetricMapperCacheResult, bool) {
-	cacheMutex.RLock()
-	if result, ok := m.cache[metricString]; ok {
-		cacheMutex.RUnlock()
-		return result, true
+	if result, ok := m.cache.Load(metricString); ok {
+		cacheHit := result.(MetricMapperCacheResult)
+		return &cacheHit, true
 	} else {
-		cacheMutex.RUnlock()
 		return nil, false
 	}
 }
 
 func (m *MetricMapperCache) Add(metricString string, mapping *MetricMapping, labels prometheus.Labels) {
-	cacheMutex.Lock()
-	m.cache[metricString] = &MetricMapperCacheResult{Mapping: mapping, Labels: labels}
-	cacheMutex.Unlock()
+	m.cache.Store(metricString, &MetricMapperCacheResult{Mapping: mapping, Labels: labels})
 }
