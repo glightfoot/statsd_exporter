@@ -176,6 +176,8 @@ func watchUDPBuffers(lastDropped int, lastDropped6 int) {
 		udpBufferDropped.WithLabelValues(label).Add(float64(diff))
 
 		time.Sleep(10 * time.Second)
+		lastDropped = droppedUDP
+		lastDropped6 = droppedUDP6
 	}
 }
 
