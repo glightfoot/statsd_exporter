@@ -34,8 +34,7 @@ func NewMetricMapperCache() *MetricMapperCache {
 
 func (m *MetricMapperCache) Get(metricString string) (*MetricMapperCacheResult, bool) {
 	if result, ok := m.cache.Load(metricString); ok {
-		cacheHit := result.(MetricMapperCacheResult)
-		return &cacheHit, true
+		return result.(*MetricMapperCacheResult), true
 	} else {
 		return nil, false
 	}
