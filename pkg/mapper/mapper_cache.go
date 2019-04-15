@@ -14,32 +14,75 @@
 package mapper
 
 import (
-	"sync"
+	"github.com/hashicorp/golang-lru"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+var (
+	cacheSize = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "statsd_exporter_cache_size",
+			Help: "The count of unique metrics currently cached.",
+		},
+	)
+	cachedCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "statsd_exporter_cache_requests_total",
+			Help: "The counter of metric cache hits and misses.",
+		},
+		[]string{"result"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(cachedCounter)
+	prometheus.MustRegister(cacheSize)
+}
+
 type MetricMapperCacheResult struct {
 	Mapping *MetricMapping
+	Matched bool
 	Labels  prometheus.Labels
 }
 
 type MetricMapperCache struct {
-	cache sync.Map
+	cache *lru.Cache
 }
 
-func NewMetricMapperCache() *MetricMapperCache {
-	return &MetricMapperCache{}
+func NewMetricMapperCache(size int) (*MetricMapperCache, error) {
+	cacheSize.Set(0)
+	cache, err := lru.New(size)
+	if err != nil {
+		return &MetricMapperCache{}, err
+	}
+	return &MetricMapperCache{cache: cache}, nil
 }
 
 func (m *MetricMapperCache) Get(metricString string) (*MetricMapperCacheResult, bool) {
-	if result, ok := m.cache.Load(metricString); ok {
+	if result, ok := m.cache.Get(metricString); ok {
+		go incrementCachedCounter("hit")
 		return result.(*MetricMapperCacheResult), true
 	} else {
+		go incrementCachedCounter("miss")
 		return nil, false
 	}
 }
 
-func (m *MetricMapperCache) Add(metricString string, mapping *MetricMapping, labels prometheus.Labels) {
-	m.cache.Store(metricString, &MetricMapperCacheResult{Mapping: mapping, Labels: labels})
+func incrementCachedCounter(result string) {
+	cachedCounter.WithLabelValues(result).Inc()
+}
+
+func (m *MetricMapperCache) AddMatch(metricString string, mapping *MetricMapping, labels prometheus.Labels) {
+	m.cache.Add(metricString, &MetricMapperCacheResult{Mapping: mapping, Matched: true, Labels: labels})
+	go func() {
+		cacheSize.Set(float64(m.cache.Len()))
+	}()
+}
+
+func (m *MetricMapperCache) AddMiss(metricString string) {
+	m.cache.Add(metricString, &MetricMapperCacheResult{Matched: false})
+	go func() {
+		cacheSize.Set(float64(m.cache.Len()))
+	}()
 }

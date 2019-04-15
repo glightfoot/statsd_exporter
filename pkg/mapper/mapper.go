@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/statsd_exporter/pkg/mapper/fsm"
 	yaml "gopkg.in/yaml.v2"
 	"time"
@@ -86,7 +87,7 @@ var defaultQuantiles = []metricObjective{
 	{Quantile: 0.99, Error: 0.001},
 }
 
-func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) (bool, error) {
+func (m *MetricMapper) InitFromYAMLString(fileContents string, cacheSize int) (bool, error) {
 	var n MetricMapper
 
 	if err := yaml.Unmarshal([]byte(fileContents), &n); err != nil {
@@ -187,14 +188,15 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) (b
 
 	}
 
-	if !reflect.DeepEqual(m.Defaults, n.Defaults) || !reflect.DeepEqual(m.Mappings, n.Mappings) || m.useCache != useCache || m.doFSM != n.doFSM {
+	if !reflect.DeepEqual(m.Defaults, n.Defaults) || !reflect.DeepEqual(m.Mappings, n.Mappings) || m.doFSM != n.doFSM {
 		m.Mutex.Lock()
 		defer m.Mutex.Unlock()
 
 		m.Defaults = n.Defaults
 		m.Mappings = n.Mappings
-		m.cache = NewMetricMapperCache()
-		m.useCache = useCache
+
+		m.InitCache(cacheSize)
+
 		if n.doFSM {
 			var mappings []string
 			for _, mapping := range n.Mappings {
@@ -218,21 +220,37 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, useCache bool) (b
 	}
 }
 
-func (m *MetricMapper) InitFromFile(fileName string, useCache bool) (bool, error) {
+func (m *MetricMapper) InitFromFile(fileName string, cacheSize int) (bool, error) {
 	mappingStr, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return false, err
 	}
-	return m.InitFromYAMLString(string(mappingStr), useCache)
+	return m.InitFromYAMLString(string(mappingStr), cacheSize)
+}
+
+func (m *MetricMapper) InitCache(cacheSize int) {
+	m.useCache = true
+	cache, err := NewMetricMapperCache(cacheSize)
+	if err != nil {
+		log.Warnf("Unable to setup metric cache. Performance may be negatively impacted. Caused by: %s", err)
+		m.useCache = false
+	}
+	if cacheSize == 0 {
+		log.Warnf("Metric cache disabled due to size 0")
+		m.useCache = false
+	}
+
+	m.cache = cache
 }
 
 func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricType) (*MetricMapping, prometheus.Labels, bool) {
 	m.Mutex.RLock()
 	defer m.Mutex.RUnlock()
+
 	if m.useCache {
 		result, cached := m.cache.Get(statsdMetric)
 		if cached {
-			return result.Mapping, result.Labels, true
+			return result.Mapping, result.Labels, result.Matched
 		}
 	}
 	// glob matching
@@ -248,11 +266,14 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 			}
 
 			if m.useCache {
-				m.cache.Add(statsdMetric, result, labels)
+				m.cache.AddMatch(statsdMetric, result, labels)
 			}
 
 			return result, labels, true
 		} else if !m.doRegex {
+			if m.useCache {
+				m.cache.AddMiss(statsdMetric)
+			}
 			// if there's no regex match type, return immediately
 			return nil, nil, false
 		}
@@ -287,11 +308,13 @@ func (m *MetricMapper) GetMapping(statsdMetric string, statsdMetricType MetricTy
 		}
 
 		if m.useCache {
-			m.cache.Add(statsdMetric, &mapping, labels)
+			m.cache.AddMatch(statsdMetric, &mapping, labels)
 		}
 
 		return &mapping, labels, true
 	}
-
+	if m.useCache {
+		m.cache.AddMiss(statsdMetric)
+	}
 	return nil, nil, false
 }

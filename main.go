@@ -92,7 +92,7 @@ func tcpAddrFromString(addr string) *net.TCPAddr {
 	}
 }
 
-func watchConfig(fileName string, mapper *mapper.MetricMapper, useMetricCache bool) {
+func watchConfig(fileName string, mapper *mapper.MetricMapper, cacheSize int) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -107,7 +107,7 @@ func watchConfig(fileName string, mapper *mapper.MetricMapper, useMetricCache bo
 		select {
 		case ev := <-watcher.Event:
 			log.Infof("Config file changed (%s), attempting reload", ev)
-			reloaded, err := mapper.InitFromFile(fileName, useMetricCache)
+			reloaded, err := mapper.InitFromFile(fileName, cacheSize)
 			if err != nil {
 				log.Errorln("Error reloading config:", err)
 				configLoads.WithLabelValues("failure").Inc()
@@ -231,7 +231,7 @@ func main() {
 		eventListenerThreads  = kingpin.Flag("event-listener.threads", "Number of listener threads to handle metric events").Default("1").Int()
 		eventListenerHandlers = kingpin.Flag("event-listener.handlers", "Number of listener handlers to handle metric events").Default("1000").Int()
 
-		useMetricCache = kingpin.Flag("statsd.enable-mapping-cache", "Should you use the metric mapping cache. Increases throughput at the cost of memory").Default("true").Bool()
+		cacheSize = kingpin.Flag("statsd.cache-size", "Maximum size of your metric cache. Relies on LRU algorithm if max size is reached.").Default("1000").Int()
 	)
 
 	log.AddFlags(kingpin.CommandLine)
@@ -294,7 +294,7 @@ func main() {
 
 	mapper := &mapper.MetricMapper{MappingsCount: mappingsCount}
 	if *mappingConfig != "" {
-		_, err := mapper.InitFromFile(*mappingConfig, *useMetricCache)
+		_, err := mapper.InitFromFile(*mappingConfig, *cacheSize)
 		if err != nil {
 			log.Fatal("Error loading config:", err)
 		}
@@ -304,7 +304,9 @@ func main() {
 				log.Fatal("Error dumping FSM:", err)
 			}
 		}
-		go watchConfig(*mappingConfig, mapper, *useMetricCache)
+		go watchConfig(*mappingConfig, mapper, *cacheSize)
+	} else {
+		mapper.InitCache(*cacheSize)
 	}
 	exporter := NewExporter(mapper)
 	exporter.Listen(*eventListenerThreads, *eventListenerHandlers, events)
