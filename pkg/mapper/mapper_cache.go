@@ -15,6 +15,7 @@ package mapper
 
 import (
 	"bytes"
+	"fmt"
 
 	xdr "github.com/davecgh/go-xdr/xdr2"
 	"github.com/prometheus/common/log"
@@ -52,6 +53,11 @@ type MetricMapperCache struct {
 func NewMetricMapperCache(maxBytes int64) (mc *MetricMapperCache, err error) {
 	mc = &MetricMapperCache{}
 	err = nil
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("error creating mapping cache: %s", r)
+		}
+	}()
 	mc.cache = fastcache.New(maxBytes)
 	return mc, nil
 }
