@@ -95,7 +95,7 @@ func tcpAddrFromString(addr string) *net.TCPAddr {
 	}
 }
 
-func watchConfig(fileName string, mapper *mapper.MetricMapper, cacheSize int) {
+func watchConfig(fileName string, mapper *mapper.MetricMapper, cacheSize int64) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -236,7 +236,7 @@ func main() {
 		eventListenerThreads  = kingpin.Flag("event-listener.threads", "Number of listener threads to handle metric events").Default("1").Int()
 		eventListenerHandlers = kingpin.Flag("event-listener.handlers", "Number of listener handlers to handle metric events").Default("1000").Int()
 
-		cacheSizeRaw = kingpin.Flag("statsd.cache-size", "Maximum size of your metric cache in human readable bytes (e.g. 1MB, 256MB, 2GB, etc). Mappings are removed from the cache in FIFO order once max size is reached. Max cache size is 2GB and values bigger than this will be clamped to 2GB.").Default("256MB").Bytes()
+		cacheSize = kingpin.Flag("statsd.cache-size", "Maximum size of your metric cache in human readable bytes (e.g. 1MB, 256MB, 2GB, etc). Mappings are removed from the cache in FIFO order once max size is reached.").Default("256MB").Bytes()
 	)
 
 	log.AddFlags(kingpin.CommandLine)
@@ -246,14 +246,6 @@ func main() {
 
 	if *statsdListenUDP == "" && *statsdListenTCP == "" {
 		log.Fatalln("At least one of UDP/TCP listeners must be specified.")
-	}
-
-	// Convert int64 bytes to int32 since fastcache takes size as an int of bytes. Limit to 2GiB
-	var cacheSize int
-	if int64(*cacheSizeRaw) > maxCacheSizeBytes {
-		cacheSize = int(maxCacheSizeBytes)
-	} else {
-		cacheSize = int(*cacheSizeRaw)
 	}
 
 	log.Infoln("Starting StatsD -> Prometheus Exporter", version.Info())
@@ -307,7 +299,7 @@ func main() {
 
 	mapper := &mapper.MetricMapper{MappingsCount: mappingsCount}
 	if *mappingConfig != "" {
-		_, err := mapper.InitFromFile(*mappingConfig, cacheSize)
+		_, err := mapper.InitFromFile(*mappingConfig, int64(*cacheSize))
 		if err != nil {
 			log.Fatal("Error loading config:", err)
 		}
@@ -317,9 +309,9 @@ func main() {
 				log.Fatal("Error dumping FSM:", err)
 			}
 		}
-		go watchConfig(*mappingConfig, mapper, cacheSize)
+		go watchConfig(*mappingConfig, mapper, int64(*cacheSize))
 	} else {
-		mapper.InitCache(cacheSize)
+		mapper.InitCache(int64(*cacheSize))
 	}
 	exporter := NewExporter(mapper)
 	exporter.Listen(*eventListenerThreads, *eventListenerHandlers, events)

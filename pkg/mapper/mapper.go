@@ -87,7 +87,7 @@ var defaultQuantiles = []metricObjective{
 	{Quantile: 0.99, Error: 0.001},
 }
 
-func (m *MetricMapper) InitFromYAMLString(fileContents string, cacheSize int) (bool, error) {
+func (m *MetricMapper) InitFromYAMLString(fileContents string, cacheSize int64) (bool, error) {
 	var n MetricMapper
 
 	if err := yaml.Unmarshal([]byte(fileContents), &n); err != nil {
@@ -220,7 +220,7 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string, cacheSize int) (b
 	}
 }
 
-func (m *MetricMapper) InitFromFile(fileName string, cacheSize int) (bool, error) {
+func (m *MetricMapper) InitFromFile(fileName string, cacheSize int64) (bool, error) {
 	mappingStr, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return false, err
@@ -228,7 +228,7 @@ func (m *MetricMapper) InitFromFile(fileName string, cacheSize int) (bool, error
 	return m.InitFromYAMLString(string(mappingStr), cacheSize)
 }
 
-func (m *MetricMapper) InitCache(cacheSize int) {
+func (m *MetricMapper) InitCache(cacheSize int64) {
 	m.useCache = true
 	cache, err := NewMetricMapperCache(cacheSize)
 	if err != nil {

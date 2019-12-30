@@ -15,11 +15,10 @@ package mapper
 
 import (
 	"bytes"
-	"fmt"
 
-	"github.com/VictoriaMetrics/fastcache"
 	xdr "github.com/davecgh/go-xdr/xdr2"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/statsd_exporter/pkg/fastcache"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -50,14 +49,9 @@ type MetricMapperCache struct {
 
 // NewMetricMapperCache returns a new mapping cache
 // use named returns to allow returning an error if making a new cache panics (maybe we should just let it panic?)
-func NewMetricMapperCache(maxBytes int) (mc *MetricMapperCache, err error) {
+func NewMetricMapperCache(maxBytes int64) (mc *MetricMapperCache, err error) {
 	mc = &MetricMapperCache{}
 	err = nil
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("error creating mapping cache: %s", r)
-		}
-	}()
 	mc.cache = fastcache.New(maxBytes)
 	return mc, nil
 }
