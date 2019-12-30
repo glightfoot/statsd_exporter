@@ -14,18 +14,16 @@
 package mapper
 
 import (
-	"github.com/hashicorp/golang-lru"
+	"bytes"
+	"fmt"
+
+	"github.com/VictoriaMetrics/fastcache"
+	xdr "github.com/davecgh/go-xdr/xdr2"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	cacheSize = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "statsd_exporter_cache_size",
-			Help: "The count of unique metrics currently cached.",
-		},
-	)
 	cachedCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "statsd_exporter_cache_requests_total",
@@ -37,7 +35,6 @@ var (
 
 func init() {
 	prometheus.MustRegister(cachedCounter)
-	prometheus.MustRegister(cacheSize)
 }
 
 type MetricMapperCacheResult struct {
@@ -47,22 +44,34 @@ type MetricMapperCacheResult struct {
 }
 
 type MetricMapperCache struct {
-	cache *lru.Cache
+	cache *fastcache.Cache
 }
 
-func NewMetricMapperCache(size int) (*MetricMapperCache, error) {
-	cacheSize.Set(0)
-	cache, err := lru.New(size)
-	if err != nil {
-		return &MetricMapperCache{}, err
-	}
-	return &MetricMapperCache{cache: cache}, nil
+// NewMetricMapperCache returns a new mapping cache
+// use named returns to allow returning an error if making a new cache panics (maybe we should just let it panic?)
+func NewMetricMapperCache(maxBytes int) (mc *MetricMapperCache, err error) {
+	mc = &MetricMapperCache{}
+	err = nil
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("error creating mapping cache: %s", r)
+		}
+	}()
+	mc.cache = fastcache.New(maxBytes)
+	return mc, nil
 }
 
 func (m *MetricMapperCache) Get(metricString string) (*MetricMapperCacheResult, bool) {
-	if result, ok := m.cache.Get(metricString); ok {
+	if encodedData, ok := m.cache.HasGet([]byte{}, []byte(metricString)); ok {
+		var result *MetricMapperCacheResult
+		_, err := xdr.Unmarshal(bytes.NewReader(encodedData), result)
+		if err != nil {
+			// TODO: see what might cause an error and handle better
+			go incrementCachedCounter("miss")
+			return nil, false
+		}
 		go incrementCachedCounter("hit")
-		return result.(*MetricMapperCacheResult), true
+		return result, true
 	} else {
 		go incrementCachedCounter("miss")
 		return nil, false
@@ -74,15 +83,25 @@ func incrementCachedCounter(result string) {
 }
 
 func (m *MetricMapperCache) AddMatch(metricString string, mapping *MetricMapping, labels prometheus.Labels) {
-	m.cache.Add(metricString, &MetricMapperCacheResult{Mapping: mapping, Matched: true, Labels: labels})
-	go func() {
-		cacheSize.Set(float64(m.cache.Len()))
-	}()
+	var w bytes.Buffer
+	v := MetricMapperCacheResult{Mapping: mapping, Matched: true, Labels: labels}
+	_, err := xdr.Marshal(&w, &v)
+	if err != nil {
+		// TODO: handle this error
+		return
+	}
+	encodedData := w.Bytes()
+	m.cache.Set([]byte(metricString), encodedData)
 }
 
 func (m *MetricMapperCache) AddMiss(metricString string) {
-	m.cache.Add(metricString, &MetricMapperCacheResult{Matched: false})
-	go func() {
-		cacheSize.Set(float64(m.cache.Len()))
-	}()
+	var w bytes.Buffer
+	v := MetricMapperCacheResult{Matched: false}
+	_, err := xdr.Marshal(&w, &v)
+	if err != nil {
+		// TODO: handle this error
+		return
+	}
+	encodedData := w.Bytes()
+	m.cache.Set([]byte(metricString), encodedData)
 }

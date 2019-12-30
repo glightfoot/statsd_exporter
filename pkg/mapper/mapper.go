@@ -235,7 +235,7 @@ func (m *MetricMapper) InitCache(cacheSize int) {
 		log.Warnf("Unable to setup metric cache. Performance may be negatively impacted. Caused by: %s", err)
 		m.useCache = false
 	}
-	if cacheSize == 0 {
+	if cacheSize <= 0 {
 		log.Warnf("Metric cache disabled due to size 0")
 		m.useCache = false
 	}
