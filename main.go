@@ -33,9 +33,6 @@ import (
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
 )
 
-// 2GiB
-const maxCacheSizeBytes int64 = 2147483648
-
 func init() {
 	prometheus.MustRegister(version.NewCollector("statsd_exporter"))
 }
