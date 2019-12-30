@@ -19,6 +19,7 @@ import (
 
 	"github.com/VictoriaMetrics/fastcache"
 	xdr "github.com/davecgh/go-xdr/xdr2"
+	"github.com/prometheus/common/log"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -67,6 +68,7 @@ func (m *MetricMapperCache) Get(metricString string) (*MetricMapperCacheResult, 
 		_, err := xdr.Unmarshal(bytes.NewReader(encodedData), result)
 		if err != nil {
 			// TODO: see what might cause an error and handle better
+			log.Errorf("Could not unmarshal cached result: %s", err)
 			go incrementCachedCounter("miss")
 			return nil, false
 		}
@@ -88,6 +90,7 @@ func (m *MetricMapperCache) AddMatch(metricString string, mapping *MetricMapping
 	_, err := xdr.Marshal(&w, &v)
 	if err != nil {
 		// TODO: handle this error
+		log.Errorf("Could not marshal mapping match to add to cache: %s", err)
 		return
 	}
 	encodedData := w.Bytes()
@@ -100,6 +103,7 @@ func (m *MetricMapperCache) AddMiss(metricString string) {
 	_, err := xdr.Marshal(&w, &v)
 	if err != nil {
 		// TODO: handle this error
+		log.Errorf("Could not marshal mapping miss to add to cache: %s", err)
 		return
 	}
 	encodedData := w.Bytes()
