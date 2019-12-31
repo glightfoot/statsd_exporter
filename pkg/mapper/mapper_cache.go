@@ -65,7 +65,7 @@ func NewMetricMapperCache(maxBytes int64) (mc *MetricMapperCache, err error) {
 func (m *MetricMapperCache) Get(metricString string) (*MetricMapperCacheResult, bool) {
 	if encodedData, ok := m.cache.HasGet([]byte{}, []byte(metricString)); ok {
 		var result *MetricMapperCacheResult
-		_, err := xdr.Unmarshal(bytes.NewReader(encodedData), result)
+		_, err := xdr.Unmarshal(bytes.NewReader(encodedData), &result)
 		if err != nil {
 			// TODO: see what might cause an error and handle better
 			log.Errorf("Could not unmarshal cached result: %s", err)
